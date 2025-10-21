@@ -1,7 +1,3 @@
-I understand you want the README content without markdown formatting. <cite/>
-
-Here's the plain text version:
-
 LIDC-IDRI Lung Nodule Prediction
 
 A complete pipeline for preprocessing, training, and evaluating deep learning models for lung nodule segmentation using the LIDC-IDRI dataset. <cite/>
@@ -74,15 +70,7 @@ Segmentation Pipeline:
 
 Dataset
 
-Download the LIDC-IDRI dataset (~1010 patients) from TCIA: https://wiki.cancerimagingarchive.net/display/Public/LIDC-IDRI
-
-Citation
-
-Jaeho Kim (2020) – LIDC-IDRI Segmentation (U-Net, Nested U-Net)
-GitHub: https://github.com/jaeho3690/LIDC-IDRI-Segmentation
-
-Jaeho Kim (Kaggle Contributor) – LIDC-IDRI Preprocessing Code (2017), Data Science Bowl 2017 Tutorial
-https://www.kaggle.com/c/data-science-bowl-2017
+Download the LIDC-IDRI dataset (~1010 patients) from TCIA:[https://www.cancerimagingarchive.net/collection/lidc-idri/]
 
 Notes
 
