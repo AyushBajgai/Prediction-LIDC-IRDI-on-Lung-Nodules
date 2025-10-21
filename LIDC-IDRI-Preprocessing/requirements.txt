@@ -1,0 +1,12 @@
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.13.1
+tqdm==4.66.4
+pillow==10.3.0
+scikit-image==0.24.0
+scikit-learn==1.5.0
+medpy==0.5.2
+pylidc==0.2.3
+pydicom==2.4.4
+sqlalchemy==2.0.31
+configparser==6.0.0

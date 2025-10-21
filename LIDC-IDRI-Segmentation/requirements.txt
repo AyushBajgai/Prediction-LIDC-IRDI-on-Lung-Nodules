@@ -1,0 +1,28 @@
+# Core Python and scientific libraries
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+tqdm>=4.65.0
+PyYAML>=6.0
+
+# PyTorch and deep learning stack
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Image processing
+opencv-python>=4.8.0
+albumentations>=1.3.0
+Pillow>=9.5.0
+
+# Visualization and utilities
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Optional (for MAW-Net or wavelet attention)
+pytorch_wavelets>=1.3.0  # keep only if you use MAW-Net or mwa.py module
+
+# Argument parsing (already built-in with Python)
+argparse
+
