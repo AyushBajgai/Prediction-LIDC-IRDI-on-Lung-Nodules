@@ -190,11 +190,7 @@ data/
 
 Each patient’s data is stored under its own folder (e.g., `LIDC-IDRI-0001`).
 ```
-**File:** LIDC-IDRI-Preprocessing/README.md (L140-141)
-```markdown
-- **Jaeho Kim (Kaggle Contributor)**, *LIDC-IDRI Preprocessing Code (2017)*, Data Science Bowl 2017 Tutorial.  
-  https://www.kaggle.com/c/data-science-bowl-2017  
-```
+
 **File:** LIDC-IDRI-Preprocessing/README.md (L148-148)
 ```markdown
 - Download the full **LIDC-IDRI dataset** (~1010 patients) from [TCIA](https://www.cancerimagingarchive.net/collection/lidc-idri/).  
@@ -279,6 +275,5 @@ python validate.py --name UNET --augmentation False
 | **Confusion Matrix** | Reports TP, FP, FN, and TN counts |
 
 Metrics are computed for both *nodule-present* and *clean* datasets.
+``` 
 ```
-**File:** LIDC-IDRI-Segmentation/README.md (L186-187)
-```markdown
