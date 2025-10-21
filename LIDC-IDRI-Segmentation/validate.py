@@ -20,9 +20,7 @@ from Unet.unet_model import UNet
 from UnetNested.Nested_Unet import NestedUNet
 
 
-# ----------------------------
-# Args
-# ----------------------------
+#Argument parser
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--name', default="UNET", choices=['UNET', 'NestedUNET'])
@@ -30,9 +28,7 @@ def parse_args():
     return vars(p.parse_args())
 
 
-# ----------------------------
-# I/O helpers
-# ----------------------------
+#Helper function
 def save_output(pred_batch, out_dir, src_paths, start_idx):
     """Save binarized predictions, following the original naming rule."""
     count = start_idx
@@ -44,9 +40,7 @@ def save_output(pred_batch, out_dir, src_paths, start_idx):
     return count
 
 
-# ----------------------------
-# FP metrics (positive & clean)
-# ----------------------------
+#FP positivity clean function
 def calculate_fp(pred_dir, mask_root, distance_threshold=80):
     """TP/TN/FP/FN on positive set; distance filter between COMs."""
     cm = [0, 0, 0, 0]  # TP, TN, FP, FN
@@ -81,7 +75,7 @@ def calculate_fp(pred_dir, mask_root, distance_threshold=80):
             cm[3] += 1  # FN when nothing predicted
     return np.array(cm)
 
-
+#FP cleaning for distance thresoldf
 def calculate_fp_clean_dataset(pred_dir, distance_threshold=80):
     """FP/TN on clean set (no positives expected)."""
     cm = [0, 0, 0, 0]  # TP, TN, FP, FN (TP/FN unused here)
@@ -111,9 +105,7 @@ def calculate_fp_clean_dataset(pred_dir, distance_threshold=80):
     return np.array(cm)
 
 
-# ----------------------------
-# Eval loop for a split
-# ----------------------------
+#Splitting for evaluation
 def run_eval_split(model, loader, device, out_dir, save_paths, title='EVAL'):
     meters = {'iou': AverageMeter(), 'dice': AverageMeter()}
     idx = 0
@@ -142,9 +134,7 @@ def run_eval_split(model, loader, device, out_dir, save_paths, title='EVAL'):
     return meters
 
 
-# ----------------------------
-# Main
-# ----------------------------
+#Main for argument parsing
 def main():
     args = parse_args()
 
@@ -154,7 +144,6 @@ def main():
     # load saved config
     cfg_path = Path('model_outputs') / NAME / 'config.yml'
     with open(cfg_path, 'r') as f:
-        # safe_load for YAML
         config = yaml.safe_load(f)
 
     print('-' * 20)
@@ -162,11 +151,11 @@ def main():
         print(f"{k}: {v}")
     print('-' * 20)
 
-    # device & cudnn
+    # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     cudnn.benchmark = True
 
-    # build model and load weights
+    # build model
     print(f"=> building model: {NAME}")
     if config['name'] == 'NestedUNET':
         model = NestedUNet(num_classes=1)
@@ -182,12 +171,14 @@ def main():
     model.load_state_dict(torch.load(str(weights), map_location=device))
     model = model.to(device)
 
-    # ----------------------------
-    # Prepare TEST (positive set)
-    # ----------------------------
-    IMAGE_DIR = Path('/content/drive/MyDrive/LUNG_DATA/Image/')
-    MASK_DIR = Path('/content/drive/MyDrive/LUNG_DATA/Mask/')
-    meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/meta.csv')
+    # Prepare test set
+    #IMAGE_DIR = Path('/content/drive/MyDrive/LUNG_DATA/Image/')
+    #MASK_DIR = Path('/content/drive/MyDrive/LUNG_DATA/Mask/')
+    #meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/meta.csv')
+
+    IMAGE_DIR = "../data/Image/"
+    MASK_DIR = "../data/Mask/"
+    meta = pd.read_csv('../data/Meta/meta.csv')
 
     meta['original_image'] = meta['original_image'].apply(lambda x: str(IMAGE_DIR / f"{x}.npy"))
     meta['mask_image'] = meta['mask_image'].apply(lambda x: str(MASK_DIR / f"{x}.npy"))
@@ -214,12 +205,14 @@ def main():
     print("\n[DEBUG] sample image paths:", test_images[:5])
     print("[DEBUG] sample mask  paths:", test_masks[:5])
 
-    # ----------------------------
-    # Prepare CLEAN TEST (negative set)
-    # ----------------------------
-    CLEAN_IMG = Path('/content/drive/MyDrive/LUNG_DATA/Clean/Image/')
-    CLEAN_MSK = Path('/content/drive/MyDrive/LUNG_DATA/Mask/')
-    clean_meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/clean_meta.csv')
+    # Preparing clean test
+    #CLEAN_IMG = Path('/content/drive/MyDrive/LUNG_DATA/Clean/Image/')
+    #CLEAN_MSK = Path('/content/drive/MyDrive/LUNG_DATA/Mask/')
+    #clean_meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/clean_meta.csv')
+
+    CLEAN_IMG = "../LUNG_DATA/Clean/Image/"
+    CLEAN_MSK = "../LUNG_DATA/Mask/"
+    clean_meta = pd.read_csv('../LUNG_DATA/Meta/clean_meta.csv')
 
     clean_meta['original_image'] = clean_meta['original_image'].apply(lambda x: str(CLEAN_IMG / f"{x}.npy"))
     clean_meta['mask_image'] = clean_meta['mask_image'].apply(lambda x: str(CLEAN_MSK / f"{x}.npy"))
@@ -244,9 +237,7 @@ def main():
         shuffle=False, pin_memory=True, drop_last=False, num_workers=6
     )
 
-    # ----------------------------
-    # Evaluate both splits
-    # ----------------------------
+    # Evaluate both splits explicitly
     test_m = run_eval_split(model, test_loader, device, out_dir, test_images, title='TEST')
     print("\n" + "=" * 50)
     print(f"[TEST] IoU : {test_m['iou'].avg:.4f}")

@@ -20,14 +20,13 @@ from Unet.unet_model import UNet
 from UnetNested.Nested_Unet import NestedUNet
 
 
-# ----------------------------
-# Argument parser
-# ----------------------------
+
+# parsing argument here
 def build_args():
     """Define and parse command-line arguments."""
     p = argparse.ArgumentParser()
 
-    # Model configuration
+    # Model configuration done
     p.add_argument('--name', default='UNET', choices=['UNET', 'NestedUNET'])
     p.add_argument('--epochs', type=int, default=100)
     p.add_argument('-b', '--batch_size', type=int, default=8)
@@ -41,14 +40,13 @@ def build_args():
     p.add_argument('--weight_decay', type=float, default=1e-4)
     p.add_argument('--nesterov', type=str2bool, default=False)
 
-    # Data settings
+    # Data settings for aug
     p.add_argument('--augmentation', type=str2bool, default=False, choices=[True, False])
     return p.parse_args()
 
 
-# ----------------------------
+
 # Train/validation epoch runner
-# ----------------------------
 def _run_epoch(data_loader, model, criterion, device, mode='train', optimizer=None):
     """
     Run one epoch for either training or validation.
@@ -95,9 +93,7 @@ def _run_epoch(data_loader, model, criterion, device, mode='train', optimizer=No
     ])
 
 
-# ----------------------------
-# Main training pipeline
-# ----------------------------
+# training mai pipeline
 def main():
     cfg = vars(build_args())
 
@@ -111,25 +107,25 @@ def main():
     for k, v in cfg.items():
         print(f"  - {k}: {v}")
 
-    # Save configuration
+    # Save configurations
     with open(os.path.join(out_dir, 'config.yml'), 'w') as f:
         yaml.safe_dump(cfg, f)
 
-    # Setup device and CUDNN
+    # Setup device and CUD
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     cudnn.benchmark = True
 
-    # Initialize model
+    # Initializeing model
     print(f"[Model] Building {cfg['name']}")
     model = NestedUNet(num_classes=1) if cfg['name'] == 'NestedUNET' else UNet(n_channels=1, n_classes=1, bilinear=True)
 
-    # Multi-GPU support
+    # Multi-GPU checks
     if torch.cuda.device_count() > 1:
         print(f"[Model] Using DataParallel (GPUs: {torch.cuda.device_count()})")
         model = nn.DataParallel(model)
     model = model.to(device)
 
-    # Optimizer setup
+    # Optimizer setups
     params = (p for p in model.parameters() if p.requires_grad)
     if cfg['optimizer'] == 'Adam':
         optimizer = optim.Adam(params, lr=cfg['lr'], weight_decay=cfg['weight_decay'])
@@ -144,11 +140,10 @@ def main():
     # Loss function
     criterion = BCEDiceLoss().to(device)
 
-    # ----------------------------
-    # Dataset loading
-    # ----------------------------
-  #  IMAGE_DIR = '/content/drive/MyDrive/LUNG_DATA/Image/'
-   # MASK_DIR = '/content/drive/MyDrive/LUNG_DATA/Mask/'
+# Dataset loading
+
+    #IMAGE_DIR = '/content/drive/MyDrive/LUNG_DATA/Image/'
+    #MASK_DIR = '/content/drive/MyDrive/LUNG_DATA/Mask/'
     #meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/meta.csv')
     IMAGE_DIR = "../data/Image/"
     MASK_DIR = "../data/Mask/"
@@ -181,9 +176,7 @@ def main():
                                              shuffle=False, num_workers=cfg['num_workers'],
                                              pin_memory=True, drop_last=False)
 
-    # ----------------------------
-    # Training loop
-    # ----------------------------
+    #Trying training loop
     best_dice = -1.0
     epochs_no_improve = 0
     logs = []  # collect logs for CSV output
@@ -196,14 +189,14 @@ def main():
               f"Train -> loss:{train_log['loss']:.4f}, dice:{train_log['dice']:.4f}, iou:{train_log['iou']:.4f} | "
               f"Val -> loss:{val_log['loss']:.4f}, dice:{val_log['dice']:.4f}, iou:{val_log['iou']:.4f}")
 
-        # Store epoch results
+        # Store each epoch results
         logs.append({
             'epoch': ep, 'lr': cfg['lr'],
             'loss': train_log['loss'], 'iou': train_log['iou'], 'dice': train_log['dice'],
             'val_loss': val_log['loss'], 'val_iou': val_log['iou'], 'val_dice': val_log['dice']
         })
 
-        # Save best model
+        # Save the best model
         if val_log['dice'] > best_dice:
             best_dice = val_log['dice']
             epochs_no_improve = 0
