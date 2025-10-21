@@ -71,7 +71,3 @@ Segmentation Pipeline:
 Dataset
 
 Download the LIDC-IDRI dataset (~1010 patients) from TCIA:[https://www.cancerimagingarchive.net/collection/lidc-idri/]
-
-Notes
-
-This is the same content as before, just without markdown formatting symbols like hashtags, asterisks, and backticks. <cite/> You can copy and paste this directly into your README.md file.
