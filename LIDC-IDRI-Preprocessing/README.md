@@ -136,7 +136,7 @@ builder.prepare_dataset()
 
 ## 6. Notes
 
-- Download the full **LIDC-IDRI dataset** (~1010 patients) from [TCIA](https://www.cancerimagingarchive.net/collection/lidc-idri/).  
+- Download the full **LIDC-IDRI dataset** (~1010 patients) from [link here](https://www.cancerimagingarchive.net/collection/lidc-idri/).  
 - On the first run, `pylidc` will create a local SQLite index (takes a few minutes).  
 - Missing scans are automatically skipped.  
 - `.npy` files can be used directly in PyTorch, TensorFlow, or NumPy pipelines.
