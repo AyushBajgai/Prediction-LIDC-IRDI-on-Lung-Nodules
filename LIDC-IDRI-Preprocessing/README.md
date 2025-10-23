@@ -133,19 +133,10 @@ builder = MakeDataSet(
 builder.prepare_dataset()
 ```
 
----
 
-## 6. Citation
+## 6. Notes
 
-- **Jaeho Kim (Kaggle Contributor)**, *LIDC-IDRI Preprocessing Code (2017)*, Data Science Bowl 2017 Tutorial.  
-  https://www.kaggle.com/c/data-science-bowl-2017  
-
-
----
-
-## 7. Notes
-
-- Download the full **LIDC-IDRI dataset** (~1010 patients) from [TCIA](https://wiki.cancerimagingarchive.net/display/Public/LIDC-IDRI).  
+- Download the full **LIDC-IDRI dataset** (~1010 patients) from [TCIA](https://www.cancerimagingarchive.net/collection/lidc-idri/).  
 - On the first run, `pylidc` will create a local SQLite index (takes a few minutes).  
 - Missing scans are automatically skipped.  
 - `.npy` files can be used directly in PyTorch, TensorFlow, or NumPy pipelines.
