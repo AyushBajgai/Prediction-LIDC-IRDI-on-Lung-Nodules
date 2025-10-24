@@ -1,4 +1,4 @@
-# 🫁 LIDC-IDRI Lung Nodule Prediction
+# LIDC-IDRI Lung Nodule Prediction
 
 A complete pipeline for **preprocessing, training, and evaluating** deep learning models for **lung nodule segmentation and prediction** using the **LIDC-IDRI** dataset.
 
