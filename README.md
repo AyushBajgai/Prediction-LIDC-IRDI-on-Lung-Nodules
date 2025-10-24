@@ -23,6 +23,10 @@ Prediction-LIDC-IRDI-on-Lung-Nodules/
 │ ├── prepare_dataset.py
 │ ├── utils.py
 │ ├── requirements.txt
+│ ├── ResNet.ipynb
+│ ├── Classification.ipynb
+│ ├── Classification2.ipynb
+│ ├── Classification3.ipynb
 │
 ├── LIDC-IDRI-Segmentation/
 │ ├── train.py
@@ -120,11 +124,11 @@ Preprocessing Pipeline
 
 4) Extraction of clean (nodule-free) CT slices
 
-Segmentation & Prediction Pipeline
+Segmentation & Classification Pipeline
 
-1) Supports U-Net and Nested U-Net (U-Net++)
+1) Supports U-Net, U-Net++, and ResNet-based CNNs
 
-2) Combined BCE + Dice loss for robust optimization
+2) Combined BCE + Dice loss or CrossEntropy losses
 
 3) Early stopping based on validation Dice/IoU
 
@@ -132,4 +136,16 @@ Segmentation & Prediction Pipeline
 
 5) Dice, IoU, Sensitivity, Specificity, False Positive Rate
 
+---
+
+### Citation
+“LIDC-IDRI Lung Nodule Prediction: Deep Learning-Based Segmentation and Classification Pipeline”
+© 2025 — Based on open-source frameworks for medical imaging analysis.
+
+---
+
+### Notes
+
+- Download the full **LIDC-IDRI dataset** (~1010 patients) from [link here](https://www.cancerimagingarchive.net/collection/lidc-idri/).  
+- `.npy` files can be used directly in PyTorch, TensorFlow, or NumPy pipelines.
 ---

@@ -1,223 +1,349 @@
-import argparse
 import os
+from pathlib import Path
 from collections import OrderedDict
-from glob import glob
+from typing import Dict, Tuple, List
 
+import argparse
+import yaml
 import pandas as pd
 import torch
-import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
-import yaml
-from torch.optim import lr_scheduler
+import torch.backends.cudnn as cudnn
+
+from torch.optim import lr_scheduler  # kept for parity (not used)
 from tqdm import tqdm
 
-from dataset import MyLidcDataset
+import albumentations as albu  # kept for parity (import side-effects not required)
+
 from losses import BCEDiceLoss
+from dataset import MyLidcDataset
 from metrics import iou_score, dice_coef
 from utils import AverageMeter, str2bool
+
 from Unet.unet_model import UNet
 from UnetNested.Nested_Unet import NestedUNet
+from MAWNet_dual_encoder import MAWNetDualEncoder
 
 
-
-# parsing argument here
-def build_args():
-    """Define and parse command-line arguments."""
-    p = argparse.ArgumentParser()
-
-    # Model configuration done
-    p.add_argument('--name', default='UNET', choices=['UNET', 'NestedUNET'])
-    p.add_argument('--epochs', type=int, default=100)
-    p.add_argument('-b', '--batch_size', type=int, default=8)
-    p.add_argument('--early_stopping', type=int, default=50)
-    p.add_argument('--num_workers', type=int, default=8)
-
-    # Optimizer configuration
-    p.add_argument('--optimizer', default='Adam', choices=['Adam', 'SGD'])
-    p.add_argument('--lr', '--learning_rate', dest='lr', type=float, default=1e-5)
-    p.add_argument('--momentum', type=float, default=0.9)
-    p.add_argument('--weight_decay', type=float, default=1e-4)
-    p.add_argument('--nesterov', type=str2bool, default=False)
-
-    # Data settings for aug
-    p.add_argument('--augmentation', type=str2bool, default=False, choices=[True, False])
-    return p.parse_args()
+# ------------------------------
+# Device
+# ------------------------------
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+# ------------------------------
+# Args
+# ------------------------------
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
 
-# Train/validation epoch runner
-def _run_epoch(data_loader, model, criterion, device, mode='train', optimizer=None):
-    """
-    Run one epoch for either training or validation.
-    Computes loss, IoU, and Dice metrics.
-    """
-    is_train = (mode == 'train')
-    model.train(mode=is_train)
+    # model
+    parser.add_argument(
+        "--name", default="UNET",
+        choices=["UNET", "NestedUNET", "MAWNET"],
+        help="model name: UNET | NestedUNET | MAWNET"
+    )
+    parser.add_argument("--epochs", default=100, type=int, metavar="N", help="number of total epochs to run")
+    parser.add_argument("-b", "--batch_size", default=8, type=int, metavar="N", help="mini-batch size (default: 8)")
+    parser.add_argument("--early_stopping", default=50, type=int, metavar="N", help="early stopping (default: 50)")
+    parser.add_argument("--num_workers", default=8, type=int)
 
-    meters = {'loss': AverageMeter(), 'iou': AverageMeter(), 'dice': AverageMeter()}
-    bar = tqdm(data_loader, total=len(data_loader), leave=False)
+    # optimizer
+    parser.add_argument(
+        "--optimizer", default="Adam", choices=["Adam", "SGD"],
+        help="optimizer: Adam | SGD (default: Adam)"
+    )
+    parser.add_argument("--lr", "--learning_rate", default=1e-5, type=float, metavar="LR", help="initial learning rate")
+    parser.add_argument("--momentum", default=0.9, type=float, help="momentum (SGD)")
+    parser.add_argument("--weight_decay", default=1e-4, type=float, help="weight decay")
+    parser.add_argument("--nesterov", default=False, type=str2bool, help="nesterov (SGD)")
 
-    with torch.set_grad_enabled(is_train):
-        for images, masks in bar:
-            images = images.to(device, non_blocking=True)
-            masks = masks.to(device, non_blocking=True)
+    # data
+    parser.add_argument("--augmentation", type=str2bool, default=False, choices=[True, False])
 
-            # Forward pass
-            logits = model(images)
-            loss = criterion(logits, masks)
-            iou = iou_score(logits, masks)
-            dice = dice_coef(logits, masks)
+    return parser.parse_args()
 
-            # Backpropagation only in training mode
-            if is_train:
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                optimizer.step()
 
-            # Metric tracking
-            meters['loss'].update(loss.item(), images.size(0))
-            meters['iou'].update(iou, images.size(0))
-            meters['dice'].update(dice, images.size(0))
+# ------------------------------
+# Train / Validate
+# ------------------------------
+def train_one_epoch(
+    loader: torch.utils.data.DataLoader,
+    model: nn.Module,
+    criterion: nn.Module,
+    optimizer: optim.Optimizer
+) -> OrderedDict:
+    meters = {"loss": AverageMeter(), "iou": AverageMeter(), "dice": AverageMeter()}
+    model.train()
 
-            # Progress display
-            bar.set_description(
-                f"{mode} | loss:{meters['loss'].avg:.4f} "
-                f"iou:{meters['iou'].avg:.4f} dice:{meters['dice'].avg:.4f}"
-            )
+    pbar = tqdm(total=len(loader))
+    for images, targets in loader:
+        images = images.to(DEVICE)
+        targets = targets.to(DEVICE)
+
+        outputs = model(images)
+        loss = criterion(outputs, targets)
+        iou = iou_score(outputs, targets)
+        dice = dice_coef(outputs, targets)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        batch_size = images.size(0)
+        meters["loss"].update(loss.item(), batch_size)
+        meters["iou"].update(iou, batch_size)
+        meters["dice"].update(dice, batch_size)
+
+        pbar.set_postfix(OrderedDict([
+            ("loss", meters["loss"].avg),
+            ("iou",  meters["iou"].avg),
+            ("dice", meters["dice"].avg),
+        ]))
+        pbar.update(1)
+    pbar.close()
 
     return OrderedDict([
-        ('loss', meters['loss'].avg),
-        ('iou', meters['iou'].avg),
-        ('dice', meters['dice'].avg),
+        ("loss", meters["loss"].avg),
+        ("iou",  meters["iou"].avg),
+        ("dice", meters["dice"].avg),
     ])
 
 
-# training mai pipeline
-def main():
-    cfg = vars(build_args())
+@torch.no_grad()
+def validate_one_epoch(
+    loader: torch.utils.data.DataLoader,
+    model: nn.Module,
+    criterion: nn.Module
+) -> OrderedDict:
+    meters = {"loss": AverageMeter(), "iou": AverageMeter(), "dice": AverageMeter()}
+    model.eval()
 
-    # Prepare output directory
-    tag = f"{cfg['name']}_{'with_augmentation' if cfg['augmentation'] else 'base'}"
-    out_dir = os.path.join('model_outputs', tag)
-    os.makedirs(out_dir, exist_ok=True)
+    pbar = tqdm(total=len(loader))
+    for images, targets in loader:
+        images = images.to(DEVICE)
+        targets = targets.to(DEVICE)
 
-    print(f"[Init] Output dir: {out_dir}")
-    print("[Config]")
-    for k, v in cfg.items():
-        print(f"  - {k}: {v}")
+        outputs = model(images)
+        loss = criterion(outputs, targets)
+        iou = iou_score(outputs, targets)
+        dice = dice_coef(outputs, targets)
 
-    # Save configurations
-    with open(os.path.join(out_dir, 'config.yml'), 'w') as f:
-        yaml.safe_dump(cfg, f)
+        batch_size = images.size(0)
+        meters["loss"].update(loss.item(), batch_size)
+        meters["iou"].update(iou, batch_size)
+        meters["dice"].update(dice, batch_size)
 
-    # Setup device and CUD
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    cudnn.benchmark = True
+        pbar.set_postfix(OrderedDict([
+            ("loss", meters["loss"].avg),
+            ("iou",  meters["iou"].avg),
+            ("dice", meters["dice"].avg),
+        ]))
+        pbar.update(1)
+    pbar.close()
 
-    # Initializeing model
-    print(f"[Model] Building {cfg['name']}")
-    model = NestedUNet(num_classes=1) if cfg['name'] == 'NestedUNET' else UNet(n_channels=1, n_classes=1, bilinear=True)
+    return OrderedDict([
+        ("loss", meters["loss"].avg),
+        ("iou",  meters["iou"].avg),
+        ("dice", meters["dice"].avg),
+    ])
 
-    # Multi-GPU checks
-    if torch.cuda.device_count() > 1:
-        print(f"[Model] Using DataParallel (GPUs: {torch.cuda.device_count()})")
-        model = nn.DataParallel(model)
-    model = model.to(device)
 
-    # Optimizer setups
-    params = (p for p in model.parameters() if p.requires_grad)
-    if cfg['optimizer'] == 'Adam':
-        optimizer = optim.Adam(params, lr=cfg['lr'], weight_decay=cfg['weight_decay'])
-    else:
-        optimizer = optim.SGD(
-            params, lr=cfg['lr'],
-            momentum=cfg['momentum'],
-            nesterov=cfg['nesterov'],
-            weight_decay=cfg['weight_decay']
+# ------------------------------
+# Builders
+# ------------------------------
+def build_model(name: str) -> nn.Module:
+    name_upper = name.upper()
+    if name_upper in ["MAWNET", "MAW-NET", "MAW"]:
+        return MAWNetDualEncoder(in_channels=1, out_channels=1)
+    if name_upper == "NESTEDUNET":
+        return NestedUNet(num_classes=1)
+    if name_upper == "UNET":
+        return UNet(n_channels=1, n_classes=1, bilinear=True)
+    raise ValueError(f"Unknown model name: {name}")
+
+
+def build_optimizer(
+    model: nn.Module,
+    opt_name: str,
+    lr: float,
+    weight_decay: float,
+    momentum: float,
+    nesterov: bool
+) -> optim.Optimizer:
+    params = filter(lambda p: p.requires_grad, model.parameters())
+
+    if opt_name == "Adam":
+        return optim.Adam(params, lr=lr, weight_decay=weight_decay)
+
+    if opt_name == "SGD":
+        return optim.SGD(
+            params, lr=lr, momentum=momentum,
+            nesterov=nesterov, weight_decay=weight_decay
         )
 
-    # Loss function
-    criterion = BCEDiceLoss().to(device)
-
-# Dataset loading
-
-    #IMAGE_DIR = '/content/drive/MyDrive/LUNG_DATA/Image/'
-    #MASK_DIR = '/content/drive/MyDrive/LUNG_DATA/Mask/'
-    #meta = pd.read_csv('/content/drive/MyDrive/LUNG_DATA/meta_csv/meta.csv')
-    IMAGE_DIR = "../data/Image/"
-    MASK_DIR = "../data/Mask/"
-    meta = pd.read_csv('../data/Meta/meta.csv')
+    raise NotImplementedError(f"Unsupported optimizer: {opt_name}")
 
 
-    meta['original_image'] = meta['original_image'].apply(lambda x: os.path.join(IMAGE_DIR, f"{x}.npy"))
-    meta['mask_image'] = meta['mask_image'].apply(lambda x: os.path.join(MASK_DIR, f"{x}.npy"))
+def build_dataloaders(
+    config: Dict
+) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
+    # Directories created in preprocessing stage
+    image_root = "/content/drive/MyDrive/LUNG_DATA/Image/"
+    mask_root  = "/content/drive/MyDrive/LUNG_DATA/Mask/"
+    meta_csv   = "/content/drive/MyDrive/LUNG_DATA/meta_csv/meta.csv"
 
-    # Split into train/validation
-    train_meta = meta[meta['data_split'] == 'Train']
-    val_meta = meta[meta['data_split'] == 'Validation']
+    meta = pd.read_csv(meta_csv)
 
-    train_images, train_masks = train_meta['original_image'].tolist(), train_meta['mask_image'].tolist()
-    val_images, val_masks = val_meta['original_image'].tolist(), val_meta['mask_image'].tolist()
+    # Build full paths
+    meta["original_image"] = meta["original_image"].apply(lambda x: f"{image_root}{x}.npy")
+    meta["mask_image"]     = meta["mask_image"].apply(lambda x: f"{mask_root}{x}.npy")
 
-    print("=" * 60)
-    print(f"[Data] Train: {len(train_images)} images, {len(train_masks)} masks")
-    print(f"[Data] Val  : {len(val_images)} images, {len(val_masks)} masks")
-    print(f"[Data] Val/Train ratio: {len(val_images) / max(1, len(train_images)):.2f}")
-    print("=" * 60)
+    train_meta = meta[meta["data_split"] == "Train"]
+    val_meta   = meta[meta["data_split"] == "Validation"]
 
-    # Build dataset and dataloaders
-    train_ds = MyLidcDataset(train_images, train_masks, cfg['augmentation'])
-    val_ds = MyLidcDataset(val_images, val_masks, cfg['augmentation'])
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=cfg['batch_size'],
-                                               shuffle=True, num_workers=cfg['num_workers'],
-                                               pin_memory=True, drop_last=True)
-    val_loader = torch.utils.data.DataLoader(val_ds, batch_size=cfg['batch_size'],
-                                             shuffle=False, num_workers=cfg['num_workers'],
-                                             pin_memory=True, drop_last=False)
+    train_img_paths = list(train_meta["original_image"])
+    train_msk_paths = list(train_meta["mask_image"])
+    val_img_paths   = list(val_meta["original_image"])
+    val_msk_paths   = list(val_meta["mask_image"])
 
-    #Trying training loop
-    best_dice = -1.0
-    epochs_no_improve = 0
-    logs = []  # collect logs for CSV output
+    print("*" * 50)
+    print(f"The length of image: {len(train_img_paths)}, mask folders: {len(train_msk_paths)} for train")
+    print(f"The length of image: {len(val_img_paths)}, mask folders: {len(val_msk_paths)} for validation")
+    ratio = len(val_img_paths) / max(1, len(train_img_paths))
+    print(f"Ratio between Val/Train is {ratio:.4f}")
+    print("*" * 50)
 
-    for ep in range(1, cfg['epochs'] + 1):
-        train_log = _run_epoch(train_loader, model, criterion, device, mode='train', optimizer=optimizer)
-        val_log = _run_epoch(val_loader, model, criterion, device, mode='val')
+    # Datasets (augmentation flag behavior unchanged)
+    train_dataset = MyLidcDataset(train_img_paths, train_msk_paths, config["augmentation"])
+    val_dataset   = MyLidcDataset(val_img_paths,   val_msk_paths,   config["augmentation"])
 
-        print(f"[Epoch {ep}/{cfg['epochs']}] "
-              f"Train -> loss:{train_log['loss']:.4f}, dice:{train_log['dice']:.4f}, iou:{train_log['iou']:.4f} | "
-              f"Val -> loss:{val_log['loss']:.4f}, dice:{val_log['dice']:.4f}, iou:{val_log['iou']:.4f}")
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=config["batch_size"],
+        shuffle=True,
+        pin_memory=True,
+        drop_last=True,
+        num_workers=config["num_workers"],
+    )
 
-        # Store each epoch results
-        logs.append({
-            'epoch': ep, 'lr': cfg['lr'],
-            'loss': train_log['loss'], 'iou': train_log['iou'], 'dice': train_log['dice'],
-            'val_loss': val_log['loss'], 'val_iou': val_log['iou'], 'val_dice': val_log['dice']
-        })
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=config["batch_size"],
+        shuffle=False,
+        pin_memory=True,
+        drop_last=False,
+        num_workers=config["num_workers"],
+    )
 
-        # Save the best model
-        if val_log['dice'] > best_dice:
-            best_dice = val_log['dice']
-            epochs_no_improve = 0
-            torch.save(model.state_dict(), os.path.join(out_dir, 'model.pth'))
-            print(f"[Checkpoint] Best model saved (Dice={best_dice:.4f})")
-        else:
-            epochs_no_improve += 1
+    return train_loader, val_loader
 
-        # Early stopping
-        if 0 <= cfg['early_stopping'] <= epochs_no_improve:
-            print(f"[Early Stop] No improvement for {epochs_no_improve} epochs.")
+
+# ------------------------------
+# Main
+# ------------------------------
+def main():
+    # Config
+    args = parse_args()
+    config = vars(args)
+
+    # Output directory name (unchanged logic)
+    file_name = f"{config['name']}_with_augmentation" if config["augmentation"] else f"{config['name']}_base"
+    out_dir = Path("model_outputs") / file_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print("Creating directory called", file_name)
+
+    # Print config
+    print("-" * 20)
+    print("Configuration Setting as follow")
+    for k in config:
+        print(f"{k}: {config[k]}")
+    print("-" * 20)
+
+    # Save config
+    with open(out_dir / "config.yml", "w") as f:
+        yaml.dump(config, f)
+
+    # Loss & backend
+    criterion = BCEDiceLoss().to(DEVICE)
+    cudnn.benchmark = True
+
+    # Model
+    print("=> creating model")
+    model = build_model(config["name"]).to(DEVICE)
+
+    # Multi-GPU
+    if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
+
+    # Optimizer
+    optimizer = build_optimizer(
+        model=model,
+        opt_name=config["optimizer"],
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+        momentum=config["momentum"],
+        nesterov=config["nesterov"],
+    )
+
+    # Data
+    train_loader, val_loader = build_dataloaders(config)
+
+    # Log dataframe (same columns/order)
+    log_cols = ["epoch", "lr", "loss", "iou", "dice", "val_loss", "val_iou", "val_dice"]
+    log_df = pd.DataFrame(index=[], columns=log_cols)
+
+    best_dice = 0.0
+    trigger = 0
+
+    for epoch in range(config["epochs"]):
+        train_log = train_one_epoch(train_loader, model, criterion, optimizer)
+        val_log   = validate_one_epoch(val_loader, model, criterion)
+
+        print(
+            "Training epoch [{}/{}], Training BCE+DICE loss:{:.4f}, Training DICE:{:.4f}, Training IOU:{:.4f}, "
+            "Validation BCE+DICE loss:{:.4f}, Validation Dice:{:.4f}, Validation IOU:{:.4f}".format(
+                epoch + 1, config["epochs"],
+                train_log["loss"], train_log["dice"], train_log["iou"],
+                val_log["loss"],   val_log["dice"],   val_log["iou"]
+            )
+        )
+
+        row = pd.Series(
+            [
+                epoch,
+                config["lr"],
+                train_log["loss"],
+                train_log["iou"],
+                train_log["dice"],
+                val_log["loss"],
+                val_log["iou"],
+                val_log["dice"],
+            ],
+            index=log_cols,
+        )
+
+        log_df = pd.concat([log_df, row.to_frame().T], ignore_index=True)
+        log_df.to_csv(out_dir / "log.csv", index=False)
+
+        trigger += 1
+
+        # Save best by validation Dice (unchanged)
+        if val_log["dice"] > best_dice:
+            torch.save(model.state_dict(), out_dir / "model.pth")
+            best_dice = val_log["dice"]
+            print("=> saved best model as validation DICE is greater than previous best DICE")
+            trigger = 0
+
+        # Early stopping (unchanged)
+        if config["early_stopping"] >= 0 and trigger >= config["early_stopping"]:
+            print("=> early stopping")
             break
 
         torch.cuda.empty_cache()
 
-    # Write logs to CSV
-    log_df = pd.DataFrame(logs, columns=['epoch', 'lr', 'loss', 'iou', 'dice', 'val_loss', 'val_iou', 'val_dice'])
-    log_path = os.path.join(out_dir, 'log.csv')
-    log_df.to_csv(log_path, index=False)
-    print(f"[Finish] Training complete. Log saved to: {log_path}")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

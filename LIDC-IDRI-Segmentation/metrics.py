@@ -2,29 +2,47 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-def iou_score(pred, true, eps=1e-5):
-    if torch.is_tensor(pred):
-        pred = torch.sigmoid(pred).detach().cpu().numpy()
-    if torch.is_tensor(true):
-        true = true.detach().cpu().numpy()
 
-    pred_bin = pred > 0.5
-    true_bin = true > 0.5
+def iou_score(output: torch.Tensor, target: torch.Tensor) -> float:
 
-    inter = np.logical_and(pred_bin, true_bin).sum()
-    union = np.logical_or(pred_bin, true_bin).sum()
-    return (inter + eps) / (union + eps)
+    smooth = 1e-5
+
+    # Convert to numpy boolean masks
+    if torch.is_tensor(output):
+        output = torch.sigmoid(output).detach().cpu().numpy()
+    if torch.is_tensor(target):
+        target = target.detach().cpu().numpy()
+
+    output_bin = output > 0.5
+    target_bin = target > 0.5
+
+    intersection = np.logical_and(output_bin, target_bin).sum()
+    union = np.logical_or(output_bin, target_bin).sum()
+
+    return float((intersection + smooth) / (union + smooth))
 
 
-def dice_coef(pred, true, eps=1e-5):
-    pred = torch.sigmoid(pred).flatten().detach().cpu().numpy()
-    true = true.flatten().detach().cpu().numpy()
-    inter = np.sum(pred * true)
-    return (2 * inter + eps) / (pred.sum() + true.sum() + eps)
+def dice_coef(output: torch.Tensor, target: torch.Tensor) -> float:
+    smooth = 1e-5
+
+    # Apply sigmoid since U-Net outputs logits
+    output = torch.sigmoid(output).view(-1).detach().cpu().numpy()
+    target = target.view(-1).detach().cpu().numpy()
+
+    intersection = (output * target).sum()
+    dice = (2. * intersection + smooth) / (output.sum() + target.sum() + smooth)
+
+    return float(dice)
 
 
-def dice_coef_binary(pred, true, eps=1e-5):
-    pred = (pred.flatten() > 0.5).float().cpu().numpy()
-    true = true.flatten().detach().cpu().numpy()
-    inter = np.sum(pred * true)
-    return (2 * inter + eps) / (pred.sum() + true.sum() + eps)
+def dice_coef2(output: torch.Tensor, target: torch.Tensor) -> float:
+
+    smooth = 1e-5
+
+    output = (output.view(-1) > 0.5).float().cpu().numpy()
+    target = target.view(-1).detach().cpu().numpy()
+
+    intersection = (output * target).sum()
+    dice = (2. * intersection + smooth) / (output.sum() + target.sum() + smooth)
+
+    return float(dice)

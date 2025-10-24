@@ -15,16 +15,13 @@ from utils import is_dir_path, segment_lung
 
 warnings.filterwarnings("ignore")
 
-# ============================================================
-# Compatibility fix for numpy >= 1.24 (np.int was deprecated)
-# ============================================================
+
+# Compatibility fix for numpy
 if not hasattr(np, "int"):
     np.int = int
 
 
-# ============================================================
 # Function: read and parse configuration file (lung.conf)
-# ============================================================
 def load_cfg(cfg_file: str = "lung.conf"):
     parser = ConfigParser()
     parser.read(cfg_file)
@@ -55,19 +52,14 @@ def load_cfg(cfg_file: str = "lung.conf"):
         "pad": pad,
     }
 
-
-# ============================================================
 # Utility: ensure that required directories exist
-# ============================================================
 def ensure_dirs(paths):
     for p in paths:
         Path(p).mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
 # Utility: compute median malignancy and assign cancer label
 # median_high() ensures that ties are rounded toward the higher value
-# ============================================================
 def malignancy_label(nodule):
     vals = [ann.malignancy for ann in nodule]
     m = median_high(vals)
@@ -78,9 +70,7 @@ def malignancy_label(nodule):
     return m, "Ambiguous"
 
 
-# ============================================================
-# Utility: append one metadata record to the DataFrame
-# ============================================================
+#append one metadata record to the DataFrame
 def add_meta_row(meta_df: pd.DataFrame, row_list):
     cols = [
         "patient_id",
@@ -96,23 +86,18 @@ def add_meta_row(meta_df: pd.DataFrame, row_list):
     return pd.concat([meta_df, s], ignore_index=True)
 
 
-# ============================================================
-# Utility: list valid patient directories (ignore hidden files)
-# ============================================================
+# Utility: list valid patient directories
 def list_patients(dicom_root: Path):
     return sorted([f.name for f in dicom_root.iterdir() if not f.name.startswith(".")])
 
 
-# ============================================================
 # Utility: generate zero-padded file name prefixes ("000"–"999")
-# ============================================================
 def file_prefix_pool(n=1000):
     return [str(i).zfill(3) for i in range(n)]
 
 
-# ============================================================
-# Utility: create subfolders for a single patient
-# ============================================================
+
+#create subfolders for a single patient
 def patient_dirs(base_img: Path, base_mask: Path, pid: str):
     di = base_img / pid
     dm = base_mask / pid
@@ -121,9 +106,7 @@ def patient_dirs(base_img: Path, base_mask: Path, pid: str):
     return di, dm
 
 
-# ============================================================
-# Class: DatasetBuilder — main dataset construction pipeline
-# ============================================================
+# Cla main dataset construction pipeline
 class DatasetBuilder:
     def __init__(self, cfg: dict):
         self.paths = cfg
@@ -148,9 +131,7 @@ class DatasetBuilder:
         # generate prefix sequence for file naming
         self.prefix = file_prefix_pool(1000)
 
-    # ========================================================
-    # Process nodule-positive scans (patients with nodules)
-    # ========================================================
+    # Process nodule-positive scans
     def _process_nodules(self, vol, nodules_annotation, pid, save_dir_img, save_dir_mask):
         for nid, nodule in enumerate(nodules_annotation):
             # Combine four radiologist annotations using consensus
@@ -181,9 +162,7 @@ class DatasetBuilder:
                 np.save(save_dir_img / n_name, img_slice)
                 np.save(save_dir_mask / m_name, m_slice)
 
-    # ========================================================
-    # Process “clean” (nodule-free) patients — up to 50 slices
-    # ========================================================
+    # Process patients — up to 50 slices
     def _process_clean(self, vol, pid, clean_img_dir, clean_mask_dir):
         clean_img_dir.mkdir(parents=True, exist_ok=True)
         clean_mask_dir.mkdir(parents=True, exist_ok=True)
@@ -203,9 +182,7 @@ class DatasetBuilder:
             np.save(clean_img_dir / n_name, img_slice)
             np.save(clean_mask_dir / m_name, zero_mask)
 
-    # ========================================================
     # Fetch a single patient’s scan and annotation info
-    # ========================================================
     def _fetch_scan(self, pid: str):
         scan = pl.query(pl.Scan).filter(pl.Scan.patient_id == pid).first()
         if scan is None:
@@ -214,9 +191,7 @@ class DatasetBuilder:
         vol = scan.to_volume()
         return scan, nods, vol
 
-    # ========================================================
     # Main build routine — iterate through all patients
-    # ========================================================
     def build(self):
         # ensure all base directories exist
         ensure_dirs(
@@ -254,10 +229,6 @@ class DatasetBuilder:
         self.meta.to_csv(meta_csv, index=False)
         print(f"Saved metadata -> {meta_csv.resolve()}")
 
-
-# ============================================================
-# Script entry point
-# ============================================================
 if __name__ == "__main__":
     cfg = load_cfg("lung.conf")
     builder = DatasetBuilder(cfg)
